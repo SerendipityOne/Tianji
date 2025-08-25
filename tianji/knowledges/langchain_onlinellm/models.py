@@ -8,6 +8,7 @@ from zhipuai import ZhipuAI
 from langchain.pydantic_v1 import BaseModel, root_validator
 import loguru
 
+
 class ZhipuLLM(LLM):
     """A custom chat model for ZhipuAI."""
 
@@ -59,13 +60,13 @@ class SiliconFlowLLM(LLM):
         super().__init__()
         print("Initializing model...")
         from openai import OpenAI
-        self.token = os.getenv("OPENAI_API_KEY")
+
+        # self.token = os.getenv("OPENAI_API_KEY")
+        self.token = os.getenv("SILICONFLOW_API_KEY")  # 修改为获取硅基流动的API KEY
         if not self.token:
-            raise ValueError("OPENAI_API_KEY not found in environment variables")
-        self.client = OpenAI(
-            api_key=self.token,
-            base_url=self.base_url
-        )
+            # raise ValueError("OPENAI_API_KEY not found in environment variables")
+            raise ValueError("SILICONFLOW_API_KEY not found in environment variables")
+        self.client = OpenAI(api_key=self.token, base_url=self.base_url)
         print("Model initialization complete")
 
     def _call(
@@ -79,8 +80,11 @@ class SiliconFlowLLM(LLM):
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=[
-                {"role": "system", "content": "你是 SocialAI 组织开发的人情世故大师，叫做天机，你将解答用户有关人情世故的问题。"},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": "你是 SocialAI 组织开发的人情世故大师，叫做天机，你将解答用户有关人情世故的问题。",
+                },
+                {"role": "user", "content": prompt},
             ],
             max_tokens=4096,
             temperature=0.7,
@@ -97,7 +101,10 @@ class SiliconFlowLLM(LLM):
     def _llm_type(self) -> str:
         """Get the type of language model used by this chat model."""
         return "SiliconFlow"
+
+
 # 以下为embedding模型
+
 
 class ZhipuAIEmbeddings(BaseModel, Embeddings):
     """`Zhipuai Embeddings` embedding models."""
@@ -119,6 +126,7 @@ class ZhipuAIEmbeddings(BaseModel, Embeddings):
                 "Zhipuai package not found, please install it with `pip install zhipuai`"
             )
         return values
+
     def _embed(self, texts: str) -> List[float]:
         try:
             resp = self.client.embeddings.create(
@@ -150,21 +158,29 @@ class ZhipuAIEmbeddings(BaseModel, Embeddings):
 class SiliconFlowEmbeddings(BaseModel, Embeddings):
     """`SiliconFlow Embeddings` embedding models."""
 
-    openai_api_key: Optional[str] = None 
+    # openai_api_key: Optional[str] = None
+    siliconflow_api_key: Optional[str] = None
     model_name: str = "BAAI/bge-m3"
 
     @root_validator()
     def validate_environment(cls, values: Dict) -> Dict:
-        values["openai_api_key"] = values.get("openai_api_key") or os.getenv(
-            "OPENAI_API_KEY"
+        # values["openai_api_key"] = values.get("openai_api_key") or os.getenv(
+        #     "OPENAI_API_KEY"
+        # )
+        values["siliconflow_api_key"] = values.get("siliconflow_api_key") or os.getenv(
+            "SILICONFLOW_API_KEY"
         )
-        if not values["openai_api_key"]:
-            raise ValueError("OpenAI API key not found")
+        # if not values["openai_api_key"]:
+        #     raise ValueError("OpenAI API key not found")
+        if not values["siliconflow_api_key"]:
+            raise ValueError("SiliconFlow API key not found")
         try:
             from openai import OpenAI
+
             values["client"] = OpenAI(
-                api_key=values["openai_api_key"],
-                base_url="https://api.siliconflow.cn/v1"
+                # api_key=values["openai_api_key"],
+                api_key=values["siliconflow_api_key"],
+                base_url="https://api.siliconflow.cn/v1",
             )
         except ImportError:
             raise ValueError(
@@ -175,9 +191,7 @@ class SiliconFlowEmbeddings(BaseModel, Embeddings):
     def _embed(self, texts: str) -> List[float]:
         try:
             response = self.client.embeddings.create(
-                model=self.model_name,
-                input=texts,
-                encoding_format="float"
+                model=self.model_name, input=texts, encoding_format="float"
             )
             return response.data[0].embedding
         except Exception as e:
