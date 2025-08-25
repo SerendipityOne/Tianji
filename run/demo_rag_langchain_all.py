@@ -1,7 +1,10 @@
 import os
 import gradio as gr
 from dotenv import load_dotenv
-from tianji.knowledges.langchain_onlinellm.models import SiliconFlowEmbeddings, SiliconFlowLLM
+from tianji.knowledges.langchain_onlinellm.models import (
+    SiliconFlowEmbeddings,
+    SiliconFlowLLM,
+)
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -13,15 +16,33 @@ import argparse
 from huggingface_hub import snapshot_download
 import requests
 import loguru
+
 load_dotenv()
 
-parser = argparse.ArgumentParser(description='Launch Gradio application')
-parser.add_argument('--listen', action='store_true', help='Specify to listen on 0.0.0.0')
-parser.add_argument('--port', type=int, default=None, help='The port the server should listen on')
-parser.add_argument('--root_path', type=str, default=None, help='The root path of the server')
-parser.add_argument('--force', action='store_true', help='Force recreate the database')
-parser.add_argument('--chunk_size', type=int, default=896, help='Chunk size for text splitting')
+parser = argparse.ArgumentParser(description="Launch Gradio application")
+parser.add_argument(
+    "--listen", action="store_true", help="Specify to listen on 0.0.0.0"
+)
+parser.add_argument(
+    "--port", type=int, default=None, help="The port the server should listen on"
+)
+parser.add_argument(
+    "--root_path", type=str, default=None, help="The root path of the server"
+)
+parser.add_argument("--force", action="store_true", help="Force recreate the database")
+parser.add_argument(
+    "--chunk_size", type=int, default=896, help="Chunk size for text splitting"
+)
 args = parser.parse_args()
+
+
+# 自定义TextLoader类，指定UTF-8编码
+class UTF8TextLoader(TextLoader):
+    def __init__(self, file_path: str):
+        super().__init__(file_path, encoding="utf-8")
+
+
+load_dotenv()
 
 # 开始前检查功能是否正常
 try:
@@ -43,18 +64,20 @@ except Exception as e:
     loguru.logger.error("SiliconFlow嵌入功能测试失败: {}", str(e))
     raise e
 
+
 # 正式代码
-def check_internet_connection(url='http://www.google.com/', timeout=5):
+def check_internet_connection(url="http://www.google.com/", timeout=5):
     try:
         _ = requests.head(url, timeout=timeout)
         return True
     except requests.ConnectionError:
         return False
-    
+
+
 destination_folder = os.path.join(TIANJI_PATH, "temp", "tianji-chinese")
 if not os.path.exists(destination_folder):
     if not check_internet_connection():
-        os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
     for _ in range(5):
         try:
             snapshot_download(
@@ -62,11 +85,13 @@ if not os.path.exists(destination_folder):
                 local_dir=destination_folder,
                 repo_type="dataset",
                 local_dir_use_symlinks=False,
-                endpoint=os.environ.get('HF_ENDPOINT', None),
+                endpoint=os.environ.get("HF_ENDPOINT", None),
             )
             break
         except Exception as e:
-            loguru.logger.error("Download failed, retrying... Error message: {}", str(e))
+            loguru.logger.error(
+                "Download failed, retrying... Error message: {}", str(e)
+            )
     else:
         loguru.logger.error("Download failed, maximum retry count reached.")
 
@@ -85,17 +110,22 @@ def create_vectordb(
     if force and os.path.exists(persist_directory):
         if os.path.isdir(persist_directory):
             import shutil
+
             shutil.rmtree(persist_directory)
         else:
             os.remove(persist_directory)
-    loader = DirectoryLoader(data_path, glob="*.txt", loader_cls=TextLoader)
+    loader = DirectoryLoader(data_path, glob="*.txt", loader_cls=UTF8TextLoader)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size, chunk_overlap=200
     )
     split_docs = text_splitter.split_documents(loader.load())
     if len(split_docs) == 0:
-        loguru.logger.error("Invalid knowledge data, processing data results in empty, check if data download failed, can be downloaded manually")
-        raise gr.Error("Invalid knowledge data, processing data results in empty, check if data download failed, can be downloaded manually")
+        loguru.logger.error(
+            "Invalid knowledge data, processing data results in empty, check if data download failed, can be downloaded manually"
+        )
+        raise gr.Error(
+            "Invalid knowledge data, processing data results in empty, check if data download failed, can be downloaded manually"
+        )
     try:
         vector_db = Chroma.from_documents(
             documents=split_docs,
@@ -108,9 +138,13 @@ def create_vectordb(
     return vector_db
 
 
-def initialize_chain(chunk_size: int, persist_directory: str, data_path: str, force=False):
+def initialize_chain(
+    chunk_size: int, persist_directory: str, data_path: str, force=False
+):
     loguru.logger.info("初始化数据库开始，当前数据路径为：{}", data_path)
-    vectordb = create_vectordb(data_path, persist_directory, embeddings, chunk_size, force)
+    vectordb = create_vectordb(
+        data_path, persist_directory, embeddings, chunk_size, force
+    )
     retriever = vectordb.as_retriever()
     prompt = hub.pull("rlm/rag-prompt")
     prompt.messages[
@@ -165,7 +199,9 @@ for scenario_name, scenario_folder in scenarios.items():
         raise FileNotFoundError(f"Data path does not exist: {data_path}")
 
     persist_directory = os.path.join(TIANJI_PATH, "temp", f"chromadb_{scenario_folder}")
-    chains[scenario_name] = initialize_chain(args.chunk_size, persist_directory, data_path, args.force)
+    chains[scenario_name] = initialize_chain(
+        args.chunk_size, persist_directory, data_path, args.force
+    )
 
 # Create Gradio interface
 TITLE = """
@@ -249,6 +285,8 @@ with gr.Blocks() as demo:
 
 
 if __name__ == "__main__":
-    server_name = '0.0.0.0' if args.listen else None
+    server_name = "0.0.0.0" if args.listen else None
     server_port = args.port
-    demo.launch(server_name=server_name, server_port=server_port, root_path=args.root_path)
+    demo.launch(
+        server_name=server_name, server_port=server_port, root_path=args.root_path
+    )
